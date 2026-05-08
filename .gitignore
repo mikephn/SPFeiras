@@ -1,0 +1,23 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Secrets / local-only
+.env
+*.env
+
+# Large source files (PDF stays local)
+*.pdf
+
+# Asset download cache
+.asset_cache/
+
+# macOS
+.DS_Store

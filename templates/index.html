@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Feiras Livres — São Paulo</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      background: #111827;
+      color: #f3f4f6;
+    }
+
+    /* ── Toolbar ── */
+    #toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 18px;
+      background: #1f2937;
+      border-bottom: 1px solid #374151;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+
+    #toolbar h1 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #f9a825;
+      white-space: nowrap;
+      letter-spacing: 0.02em;
+    }
+
+    #day-filters {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .day-btn {
+      padding: 4px 13px;
+      border: 2px solid;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-weight: 600;
+      transition: opacity 0.15s, transform 0.1s;
+      background: transparent;
+      color: #f3f4f6;
+    }
+    .day-btn.active { opacity: 1; }
+    .day-btn:not(.active) { opacity: 0.3; }
+    .day-btn:hover { transform: scale(1.07); }
+
+    #stats {
+      margin-left: auto;
+      font-size: 0.78rem;
+      color: #9ca3af;
+      white-space: nowrap;
+    }
+
+    /* ── Map ── */
+    #map { flex: 1; }
+
+    /* ── Leaflet tooltip override ── */
+    .leaflet-tooltip.feira-tip {
+      background: #1f2937;
+      border: 1px solid #4b5563;
+      color: #f3f4f6;
+      border-radius: 8px;
+      padding: 9px 13px;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      max-width: 300px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+      pointer-events: none;
+    }
+    .leaflet-tooltip.feira-tip::before { display: none; }
+
+    .tip-name  { font-weight: 700; font-size: 0.88rem; margin-bottom: 5px; }
+    .tip-row   { color: #9ca3af; }
+    .tip-row b { color: #e5e7eb; }
+    .tip-day   { display: inline-block; padding: 1px 7px; border-radius: 999px;
+                 font-size: 0.7rem; font-weight: 700; margin-bottom: 5px; }
+  </style>
+</head>
+<body>
+
+<div id="toolbar">
+  <h1>Feiras Livres — São Paulo</h1>
+  <div id="day-filters">
+    <button class="day-btn active" id="btn-all"
+            style="border-color:#6b7280; color:#d1d5db;">Todos</button>
+  </div>
+  <div id="stats">Carregando…</div>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script>
+const DAY_ORDER  = ['SEG','TER','QUA','QUI','SEX','SAB','DOM'];
+const DAY_LABELS = {
+  SEG:'Segunda', TER:'Terça', QUA:'Quarta',
+  QUI:'Quinta',  SEX:'Sexta', SAB:'Sábado', DOM:'Domingo'
+};
+const DAY_COLORS = {
+  SEG:'#ef4444', TER:'#f97316', QUA:'#eab308',
+  QUI:'#22c55e', SEX:'#06b6d4', SAB:'#3b82f6', DOM:'#a855f7'
+};
+
+// ── Map ──────────────────────────────────────────────────────────────────────
+const map = L.map('map', { zoomControl: true }).setView([-23.5505, -46.6333], 12);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  maxZoom: 19,
+}).addTo(map);
+
+// ── Cluster groups (one per day) ──────────────────────────────────────────────
+const clusterGroups = {};
+DAY_ORDER.forEach(day => {
+  const color = DAY_COLORS[day];
+  clusterGroups[day] = L.markerClusterGroup({
+    maxClusterRadius: 50,
+    iconCreateFunction(cluster) {
+      const n = cluster.getChildCount();
+      const size = n > 99 ? 38 : n > 9 ? 32 : 26;
+      return L.divIcon({
+        html: `<div style="
+          width:${size}px;height:${size}px;border-radius:50%;
+          background:${color};border:2px solid rgba(255,255,255,0.8);
+          display:flex;align-items:center;justify-content:center;
+          font-weight:700;font-size:${size > 30 ? 12 : 10}px;color:#fff;
+          box-shadow:0 2px 6px rgba(0,0,0,0.5);">${n}</div>`,
+        className: '',
+        iconSize: [size, size],
+        iconAnchor: [size/2, size/2],
+      });
+    },
+  });
+});
+
+// ── Tooltip builder ───────────────────────────────────────────────────────────
+function makeTooltip(f) {
+  const color = DAY_COLORS[f.dia] || '#888';
+  return `
+    <div class="tip-name">${esc(f.nome)}</div>
+    <span class="tip-day" style="background:${color}20;color:${color};border:1px solid ${color}40">${esc(f.dia_nome)}</span>
+    <div class="tip-row"><b>Endereço:</b> ${esc(f.endereco)}</div>
+    <div class="tip-row"><b>Bairro:</b> ${esc(f.bairro)}</div>
+    <div class="tip-row"><b>Categoria:</b> ${esc(f.categoria)}</div>
+    <div class="tip-row"><b>Feirantes:</b> ${esc(f.qnt_feirantes)}</div>
+    ${f.regiao ? `<div class="tip-row"><b>Região:</b> ${esc(f.regiao)}</div>` : ''}
+  `;
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Load data & build markers ─────────────────────────────────────────────────
+let activeDays = new Set(DAY_ORDER);
+
+async function loadFeiras() {
+  let feiras;
+  try {
+    const resp = await fetch('/api/feiras');
+    if (!resp.ok) throw new Error(await resp.text());
+    feiras = await resp.json();
+  } catch (err) {
+    document.getElementById('stats').textContent = 'Erro ao carregar dados.';
+    console.error(err);
+    return;
+  }
+
+  const withCoords = feiras.filter(f => f.lat != null && f.lng != null);
+
+  withCoords.forEach(f => {
+    const color = DAY_COLORS[f.dia] || '#888';
+    const marker = L.circleMarker([f.lat, f.lng], {
+      radius: 6,
+      fillColor: color,
+      color: 'rgba(255,255,255,0.7)',
+      weight: 1.5,
+      opacity: 1,
+      fillOpacity: 0.9,
+    });
+    marker.bindTooltip(makeTooltip(f), {
+      className: 'feira-tip',
+      sticky: true,
+      direction: 'top',
+      offset: [0, -6],
+    });
+    if (clusterGroups[f.dia]) {
+      clusterGroups[f.dia].addLayer(marker);
+    }
+  });
+
+  DAY_ORDER.forEach(day => clusterGroups[day].addTo(map));
+
+  buildDayButtons();
+  updateStats(withCoords.length);
+}
+
+// ── Day filter buttons ────────────────────────────────────────────────────────
+function buildDayButtons() {
+  const container = document.getElementById('day-filters');
+
+  DAY_ORDER.forEach(day => {
+    const color = DAY_COLORS[day];
+    const btn = document.createElement('button');
+    btn.className = 'day-btn active';
+    btn.dataset.day = day;
+    btn.textContent = DAY_LABELS[day];
+    btn.style.borderColor = color;
+    btn.style.color = color;
+    btn.addEventListener('click', () => toggleDay(day, btn));
+    container.appendChild(btn);
+  });
+
+  document.getElementById('btn-all').addEventListener('click', toggleAll);
+}
+
+function toggleDay(day, btn) {
+  if (activeDays.has(day)) {
+    activeDays.delete(day);
+    map.removeLayer(clusterGroups[day]);
+    btn.classList.remove('active');
+  } else {
+    activeDays.add(day);
+    clusterGroups[day].addTo(map);
+    btn.classList.add('active');
+  }
+  syncAllButton();
+  updateStats();
+}
+
+function toggleAll() {
+  const allActive = activeDays.size === DAY_ORDER.length;
+  DAY_ORDER.forEach(day => {
+    if (allActive) {
+      activeDays.delete(day);
+      map.removeLayer(clusterGroups[day]);
+    } else {
+      activeDays.add(day);
+      clusterGroups[day].addTo(map);
+    }
+  });
+  document.querySelectorAll('.day-btn[data-day]').forEach(b => {
+    b.classList.toggle('active', !allActive);
+  });
+  document.getElementById('btn-all').classList.toggle('active', !allActive);
+  updateStats();
+}
+
+function syncAllButton() {
+  document.getElementById('btn-all').classList.toggle('active', activeDays.size === DAY_ORDER.length);
+}
+
+function updateStats(total) {
+  const visible = DAY_ORDER
+    .filter(d => activeDays.has(d))
+    .reduce((n, d) => n + clusterGroups[d].getLayers().length, 0);
+  const suffix = total != null ? ` de ${total} com coordenadas` : '';
+  document.getElementById('stats').textContent = `${visible} feiras visíveis${suffix}`;
+}
+
+loadFeiras();
+</script>
+</body>
+</html>
